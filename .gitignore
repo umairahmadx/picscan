@@ -18,7 +18,8 @@ pubspec.lock
 /ios
 /android
 /web
-
+.metadata
+analysis_options.yaml
 # IntelliJ related
 *.iml
 *.ipr
