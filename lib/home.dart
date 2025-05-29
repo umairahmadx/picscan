@@ -58,6 +58,20 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
+  void chatScreenNavigator(bool sending) async {
+    if (flash) {
+      _controller.setFlashMode(FlashMode.off);
+
+      setState(() {
+        flash = false;
+      });
+    }
+    Navigator.push(
+      context,
+      CupertinoPageRoute(builder: (context) => ChatScreen(sending: sending)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
@@ -70,7 +84,10 @@ class _HomeScreenState extends State<HomeScreen> {
               color: Colors.black,
               child: SizedBox.expand(
                 child: ClipRRect(
-                  borderRadius: BorderRadius.only(topRight: Radius.circular(20),topLeft: Radius.circular(20)),
+                  borderRadius: BorderRadius.only(
+                    topRight: Radius.circular(20),
+                    topLeft: Radius.circular(20),
+                  ),
                   child: CameraPreview(_controller),
                 ),
               ),
@@ -86,14 +103,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       IconButton(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            CupertinoPageRoute(
-                              builder: (context) => ChatScreen(),
-                            ),
-                          );
-                        },
+                        onPressed: () => chatScreenNavigator(false),
                         icon: Icon(
                           Icons.chat_bubble_outline_rounded,
                           color: Colors.white,
@@ -150,15 +160,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           }
 
                           setState(() {
-                            message="";
+                            message = "";
                             if (context.mounted) {
-                              Navigator.push(
-                                context,
-                                CupertinoPageRoute(
-                                  builder:
-                                      (context) => ChatScreen(sending: true),
-                                ),
-                              );
+                              chatScreenNavigator(true);
                             }
                           });
                         },
@@ -191,18 +195,17 @@ class _HomeScreenState extends State<HomeScreen> {
                                     await _controller.takePicture();
                                 message = "";
                                 imageFinal = image.path;
+                                if (flash) {
+                                  _controller.setFlashMode(FlashMode.off);
+                                  setState(() {
+                                    flash = false;
+                                  });
+                                }
                                 if (kIsWeb) {
                                   Uint8List imgByte = await image.readAsBytes();
                                   imageBytes = imgByte;
                                   if (context.mounted) {
-                                    Navigator.push(
-                                      context,
-                                      CupertinoPageRoute(
-                                        builder:
-                                            (context) =>
-                                                ChatScreen(sending: true),
-                                      ),
-                                    );
+                                    chatScreenNavigator(true);
                                   }
                                 } else {
                                   File? compress = await compressFile(
@@ -211,14 +214,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   );
                                   imageFinal = compress!.path;
                                   if (context.mounted) {
-                                    Navigator.push(
-                                      context,
-                                      CupertinoPageRoute(
-                                        builder:
-                                            (context) =>
-                                                ChatScreen(sending: true),
-                                      ),
-                                    );
+                                    chatScreenNavigator(true);
                                   }
                                 }
                               } catch (e) {
@@ -248,14 +244,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         border: Border.all(color: Colors.white, width: 3),
                       ),
                       child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            CupertinoPageRoute(
-                              builder: (context) => ChatScreen(),
-                            ),
-                          );
-                        },
+                        onPressed: () => chatScreenNavigator(false),
                         style: ButtonStyle(
                           minimumSize: WidgetStatePropertyAll(Size(50, 50)),
                           shape: WidgetStatePropertyAll(CircleBorder()),

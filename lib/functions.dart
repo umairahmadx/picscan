@@ -71,47 +71,24 @@ Future<void> imagePicker(Function callState) async {
     debugPrint("Compression failed or file is null.");
   }
 }
-Future<String> apiCall(String imagePath) async {
+Future<Content> getContent(String imagePath) async {
   File imageFile = File(imagePath);
-  message="";
-  try {
-    final response = await Gemini.instance.prompt(parts: [
+  Content c = Content(
+    parts: [
       Part.bytes(await imageFile.readAsBytes()),
       Part.text("Identify and Describe The Object In this Image?"),
-    ]);
+    ],
+  );
+  return c;
 
-    if (response != null && response.output != null) {
-      message = response.output!;
-      return message;
-    } else {
-      debugPrint("API response is null.");
-      return "No response from API.";
-    }
-  } catch (e) {
-    debugPrint("Error during API call: $e");
-    return "Error processing request.";
-  }
 }
+Future<Content> getContentWeb(Uint8List bytes) async {
 
-Future<String> apiCallWeb(Uint8List bytes) async {
-  message="";
-  try {
-    final response = await Gemini.instance.prompt(
-      parts: [
-        Part.bytes(bytes),
-        Part.text("Identify and Describe The Object In this Image?"),
-      ],
-    );
-
-    if (response != null && response.output != null) {
-      message = response.output!;
-      return message;
-    } else {
-      debugPrint("API response is null.");
-      return "No response from API.";
-    }
-  } catch (e) {
-    debugPrint("Error during API call: $e");
-    return "Error processing request.";
-  }
+  Content c = Content(
+    parts: [
+      Part.bytes(bytes),
+      Part.text("Identify and Describe Everything In this Image in detail?"),
+    ],
+  );
+  return c;
 }

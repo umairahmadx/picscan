@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_gemini/flutter_gemini.dart';
 import 'functions.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -35,20 +37,192 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  void api(Content c){
+    message = "";
+    try{
+      Gemini.instance.streamChat([c]).listen((response) {
+        setState(() {
+          if(!sent) sent = true;
+          message+=response.output!;
+        });
+      }).onDone(() {
+        print(message);
+      });
+
+    } catch(e) {
+      message = "Error $e";
+    }
+  }
+
   Future<void> _callApiWeb() async {
-    await apiCallWeb(byte!);
-    setState(() {
-      sent = true;
-    });
+    Content c = await getContentWeb(byte!);
+    api(c);
+
   }
 
   Future<void> _callApi() async {
-    await apiCall(imagePath);
-    setState(() {
-      sent = true;
-    });
+    Content c = await getContent(imagePath);
+    api(c);
   }
 
+  Widget buildDescriptionWidget(String message) {
+    final lines = message.split('\n');
+
+    // Detects if a line is a list item based on common markdown patterns.
+    // It looks for lines starting with one or more asterisks (*), a dash (-),
+    // or a plus (+), followed by text and a colon (:).
+    bool isListItem(String line) {
+      final trimmed = line.trim();
+      // Regex matches lines starting with *, +, or - followed by text and a colon.
+      return RegExp(r'^((\*+)|-|\+)\s*[^:]+:\s*').hasMatch(trimmed);
+    }
+
+    // Extracts the label and description from a recognized list item line.
+    Map<String, String> extractLabelAndDescription(String line) {
+      final trimmed = line.trim();
+      final colonIndex = trimmed.indexOf(':');
+
+      if (colonIndex == -1) {
+        // If no colon is found, treat the entire line as a description or unformatted text.
+        return {'label': '', 'description': trimmed};
+      }
+
+      String labelPart = trimmed.substring(0, colonIndex);
+      String description = trimmed.substring(colonIndex + 1).trim(); // This is the part immediately after the colon
+
+      // Clean up the label: remove leading markdown (*, -, +) and any spaces.
+      // Then remove all instances of '**' and '*' from the entire label.
+      String label = labelPart.replaceAll(RegExp(r'^\s*(\*+|-|\+)\s*'), '').trim();
+      label = label.replaceAll('**', '').replaceAll('*', '').trim();
+
+      // Aggressively clean leading markdown/punctuation from the description.
+      // This handles cases like `:** description` or `: description`
+      description = description.replaceAll(RegExp(r'^\s*[:\-\*]+\s*'), '').trim();
+
+
+      // Attempt to remove the redundant label from the beginning of the description.
+      // This heuristic assumes the label might be duplicated at the start of the description.
+      if (description.toLowerCase().startsWith(label.toLowerCase())) {
+        description = description.substring(label.length).trim();
+      }
+
+      // Final trim for description
+      description = description.trim();
+
+      return {'label': label, 'description': description};
+    }
+
+    List<Widget> widgets = [];
+
+    // --- Phase 1: Process initial paragraphs ---
+    // Iterate through lines to find and add leading paragraphs until a list item is encountered.
+    int i = 0;
+    for (; i < lines.length; i++) {
+      final line = lines[i].trim();
+      if (line.isEmpty) continue; // Skip empty lines to avoid blank widgets
+
+      if (isListItem(line)) break; // Stop processing paragraphs if a list item is found
+
+      widgets.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text(
+            line,
+            style: const TextStyle(fontSize: 15, color: Colors.white),
+          ),
+        ),
+      );
+    }
+
+
+    // --- Phase 2: Process list items and subsequent non-list content ---
+    // Continue iterating from where Phase 1 left off, handling both list items
+    // and any paragraphs that might appear after the list.
+    for (; i < lines.length; i++) {
+      final line = lines[i].trim();
+      if (line.isEmpty) continue; // Skip empty lines
+
+      if (!isListItem(line)) {
+        // If the line is not a recognized list item, treat it as a regular paragraph.
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              line,
+              style: const TextStyle(fontSize: 15, color: Colors.white),
+            ),
+          ),
+        );
+        continue; // Move to the next line
+      }
+
+      // If the line is a list item, extract its label and description.
+      final extracted = extractLabelAndDescription(line);
+      final label = extracted['label']!;
+      final description = extracted['description']!;
+
+      // Only add a RichText widget if either the label or description has content.
+      if (label.isNotEmpty || description.isNotEmpty) {
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: RichText(
+              text: TextSpan(
+                children: [
+                  // Conditionally add the bullet point and bold label if the label is not empty.
+                  if (label.isNotEmpty)
+                    TextSpan(
+                      text: "• $label: ", // Formats as "• Label: "
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        fontSize: 15,
+                      ),
+                    ),
+                  // Always add the description, even if it's empty, to maintain consistent spacing.
+                  TextSpan(
+                    text: description,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }
+    }
+
+    // --- Fallback: If no widgets were generated, display the original message ---
+    // This handles cases where the message is empty or contains only unparseable content,
+    // ensuring something is always displayed.
+    if (widgets.isEmpty) {
+      widgets.add(
+        Text(
+          message,
+          style: const TextStyle(fontSize: 15, color: Colors.white),
+        ),
+      );
+    }
+
+    // Return a Column containing all the generated widgets, aligned to the start.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: widgets,
+    );
+  }
+
+  void _copyToClipboard(BuildContext context) {
+    Clipboard.setData(ClipboardData(text: message));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Message copied to clipboard!'),
+        duration: Duration(seconds: 2), // SnackBar stays for 2 seconds
+      ),
+    );
+  }
   Future<void> pickImage() async {
     if (kIsWeb) {
       await imagePickerWeb();
@@ -159,25 +333,36 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
                 Visibility(
                   visible: message.isNotEmpty,
-                  child: Container(
-                    margin: EdgeInsets.only(right: 50, left: 10, top: 0),
-                    padding: EdgeInsets.symmetric(vertical: 10, horizontal: 15),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.only(
-                        bottomRight: Radius.circular(10),
-                        topRight: Radius.circular(10),
-                        bottomLeft: Radius.circular(10),
-                        topLeft: Radius.circular(4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+
+                      Container(
+                        margin: EdgeInsets.only(right: 50, left: 10, top: 0),
+                        padding: EdgeInsets.symmetric(vertical: 10, horizontal: 15),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.only(
+                            bottomRight: Radius.circular(10),
+                            topRight: Radius.circular(10),
+                            bottomLeft: Radius.circular(10),
+                            topLeft: Radius.circular(4),
+                          ),
+                          color: Colors.lightBlueAccent[200],
+                        ),
+                        alignment: Alignment.bottomLeft,
+                        child: buildDescriptionWidget(message),
                       ),
-                      color: Colors.lightBlueAccent[200],
-                    ),
-                    alignment: Alignment.bottomLeft,
-                    child: Text(
-                      message,
-                      style: TextStyle(color: Colors.white, fontSize: 15),
-                    ),
+                      IconButton(
+                        icon: const Icon(Icons.copy),
+                        iconSize: 20,
+                        color: Colors.grey,
+                        onPressed: () => _copyToClipboard(context),
+                        tooltip: 'Copy response', // Provides a hint on long press
+                      ),
+                    ],
                   ),
                 ),
+
                 SizedBox(height: 120),
               ],
             ),
